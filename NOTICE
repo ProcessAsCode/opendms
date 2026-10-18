@@ -1,0 +1,26 @@
+OpenDMS
+Copyright (c) 2026 Cyberfort SIA (reg. 40203459193), Latvia.
+
+Licensed under the GNU Affero General Public License v3.0 only
+(AGPL-3.0-only) - see LICENSE.
+Part of the Process-as-Code open-source stack: https://github.com/ProcessAsCode
+
+--------------------------------------------------------------------------
+VENDORED COMPONENTS
+--------------------------------------------------------------------------
+
+engine-src/vendor/uapf-typescript (@uapf/uapf-typescript)
+    A vendored copy of the UAPF TypeScript reference implementation. It is a
+    reference implementation of an open format and is NOT governed by the
+    AGPL licence of OpenDMS; its own terms apply. Its package manifest is left
+    untouched on purpose.
+
+--------------------------------------------------------------------------
+THIRD-PARTY DEPENDENCIES
+--------------------------------------------------------------------------
+
+This project depends on third-party open-source packages declared in its
+package manifests. Each remains under its own license (predominantly MIT,
+BSD-3-Clause and Apache-2.0). Nothing in the OpenDMS licence alters those
+terms. Dependencies are not vendored into this repository; they are fetched
+at build time from their respective registries.

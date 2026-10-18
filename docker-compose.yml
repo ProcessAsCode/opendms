@@ -1,0 +1,157 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: opendms
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-opendms}
+      POSTGRES_DB: opendms
+    ports:
+    - 127.0.0.1:${DB_PORT:-15433}:5432
+    volumes:
+    - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U opendms
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    ports:
+    - 127.0.0.1:${REDIS_PORT:-16379}:6379
+    restart: unless-stopped
+  sdk:
+    build:
+      context: ${SDK_PATH:-/home/VeriDocs-SDK}
+    ports:
+    - 127.0.0.1:${SDK_PORT:-13100}:3100
+    environment:
+      PORT: '3100'
+      SECRET_KEY: ${SECRET_KEY}
+      ORG_DID: ${ORG_DID:-}
+      REGISTRY_URL: ${REGISTRY_URL:-https://api.register.opendms.dev}
+      REGISTRY_API_KEY: ${REGISTRY_API_KEY:-}
+      REGISTRY_EMAIL: ${REGISTRY_EMAIL:-}
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:-}
+      REGISTRY_DOMAIN: ${REGISTRY_DOMAIN:-register.opendms.dev}
+      SIGNING_MODE: ${SIGNING_MODE:-local}
+      VERAMO_API_KEY: ${VERAMO_API_KEY:-}
+      VC_HOST_BASE: ${VC_HOST_BASE:-https://sdk.opendms.dev}
+      CONTEXT_ORIGIN: ${CONTEXT_ORIGIN:-https://sdk.opendms.dev}
+    volumes:
+    - sdk-data:/app/status-data
+    - sdk-state:/app/data
+    - ./sdk-agent-store/database.sqlite:/app/database.sqlite
+    extra_hosts:
+    - host.docker.internal:host-gateway
+    networks:
+    - default
+    - veridocs-register_default
+    restart: unless-stopped
+  api:
+    build:
+      context: .
+      target: development
+    ports:
+    - 127.0.0.1:${API_PORT:-18002}:8002
+    environment:
+      OPENDMS_DATABASE_URL: postgresql://opendms:${DB_PASSWORD:-opendms}@db:5432/opendms
+      OPENDMS_REDIS_URL: redis://redis:6379
+      OPENDMS_SDK_URL: http://sdk:3100
+      OPENDMS_SDK_API_KEY: ${VERAMO_API_KEY:-}
+      OPENDMS_SDK_ENABLED: 'true'
+      OPENDMS_STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      OPENDMS_STORAGE_LOCAL_PATH: /data/documents
+      OPENDMS_STORAGE_S3_ENDPOINT: ${S3_ENDPOINT:-}
+      OPENDMS_STORAGE_S3_BUCKET: ${S3_BUCKET:-opendms-documents}
+      OPENDMS_STORAGE_S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      OPENDMS_STORAGE_S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      OPENDMS_JWT_SECRET: ${JWT_SECRET}
+      OPENDMS_MCP_NODE_TOKEN: ${MCP_NODE_TOKEN:-}
+      OPENDMS_SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-admin@opendms.local}
+      OPENDMS_SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-admin}
+      OPENDMS_DEBUG: 'true'
+      OPENDMS_LLM_PROVIDER: ${OPENDMS_LLM_PROVIDER:-anthropic}
+      OPENDMS_LLM_API_KEY: ${OPENDMS_LLM_API_KEY:-}
+      OPENDMS_LLM_BASE_URL: ${OPENDMS_LLM_BASE_URL:-}
+      OPENDMS_LLM_MODEL: ${OPENDMS_LLM_MODEL:-}
+      OPENDMS_UAPF_ENABLED: ${UAPF_ENABLED:-true}
+      OPENDMS_UAPF_ENGINE_URL: ${UAPF_ENGINE_URL:-http://uapf-engine:4000}
+      OPENDMS_UAPF_ENGINE_AUTH_TOKEN: ${UAPF_ENGINE_AUTH_TOKEN:-}
+      OPENDMS_BRAND_NAME: ${OPENDMS_BRAND_NAME:-}
+      OPENDMS_BRAND_SUBTITLE: ${OPENDMS_BRAND_SUBTITLE:-}
+      OPENDMS_BRAND_PRIMARY_COLOR: ${OPENDMS_BRAND_PRIMARY_COLOR:-}
+      OPENDMS_BRAND_LOGO_URL: ${OPENDMS_BRAND_LOGO_URL:-}
+      OIDC_ENABLED: ${OIDC_ENABLED:-false}
+      OIDC_LABEL: ${OIDC_LABEL:-SSO}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      OIDC_AUTO_PROVISION: ${OIDC_AUTO_PROVISION:-true}
+      OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-viewer}
+      OIDC_DEFAULT_ORG_ID: ${OIDC_DEFAULT_ORG_ID:-}
+      SSL_CERT_FILE: ${SSL_CERT_FILE:-}
+      REQUESTS_CA_BUNDLE: ${REQUESTS_CA_BUNDLE:-}
+      OPENDMS_OPENDMS_HOST_DID: ${OPENDMS_HOST_DID:-did:web:opendms.local}
+      OPENDMS_OPENDMS_HOST_BASE_URL: ${OPENDMS_HOST_BASE_URL:-http://api:8002}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      sdk:
+        condition: service_started
+      uapf-engine:
+        condition: service_healthy
+    volumes:
+    - ./src:/app/src
+    - doc-storage:/data/documents
+    - ./uapf-packages:/uapf-packages:ro
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+    - ${FRONTEND_PORT:-28080}:80
+    depends_on:
+    - api
+    restart: unless-stopped
+
+
+  uapf-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.uapf-engine
+      args:
+        UAPF_ENGINE_REF: ${UAPF_ENGINE_REF:-main}
+    ports:
+      - "127.0.0.1:${UAPF_ENGINE_PORT:-14000}:4000"
+    environment:
+      PORT: "4000"
+      PACKAGES_DIR: /packages
+      # Canonical UAPF v1.1 schemas — turn on strict validation per
+      # UAPF-specification/schemas/. Engine's UapfValidator loads:
+      # manifest.schema.json, policies.schema.json, resource-binding.schema.json
+      UAPF_SCHEMAS_DIR: /uapf-schemas
+    volumes:
+      - ./uapf-packages:/packages
+      - ./uapf-schemas:/uapf-schemas:ro
+    networks:
+      - default
+      - deploy_default
+    restart: unless-stopped
+
+volumes:
+  pgdata: null
+  sdk-data: null
+  sdk-state: null
+  doc-storage: null
+networks:
+  veridocs-register_default:
+    external: true
+  deploy_default:
+    external: true
